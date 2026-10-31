@@ -80,16 +80,49 @@ CI runs the full gate on every push (`.github/workflows/quality-gate.yml`).
 
 ## Deploying to Vercel
 
-1. **Create a database** on [Neon](https://neon.tech) or [Supabase](https://supabase.com).
-   - Neon: `DATABASE_URL` = pooled connection string (`-pooler` host, add `?sslmode=require&pgbouncer=true`); `DIRECT_URL` = direct connection string.
-   - Supabase: `DATABASE_URL` = transaction pooler (port 6543, `?pgbouncer=true`); `DIRECT_URL` = session/direct connection (port 5432).
-2. **Import the repo** in Vercel and set the env vars: `DATABASE_URL`, `DIRECT_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL` (your production URL), `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and optionally `EMAIL_SERVER` and `EMAIL_FROM`. **Do not** set `ENABLE_DEV_LOGIN`.
-3. **Build:** `vercel.json` sets the build command to `npm run vercel-build`, which runs `prisma migrate deploy && next build`, so migrations apply on every deploy. `postinstall` runs `prisma generate`.
-4. **Seed once** against production from your machine:
-   ```bash
-   DATABASE_URL="<direct url>" npx prisma db seed
-   ```
-5. In Google Cloud Console, add `https://<your-domain>/api/auth/callback/google` as an authorized redirect URI.
+> **Migrations are NOT run automatically on deploy.** The Vercel build only runs `next build`
+> (`vercel.json` → `npm run build`, and there is deliberately no `vercel-build` script, which
+> Vercel would otherwise pick up automatically). You apply migrations by hand, against the target
+> database, **before** deploying code that depends on them.
+
+### 1. Create the database
+Create a database on [Neon](https://neon.tech) (or [Supabase](https://supabase.com)). Use a separate **staging** branch or project first.
+- Neon: `DATABASE_URL` = pooled connection string (`-pooler` host, append `?sslmode=require&pgbouncer=true`); `DIRECT_URL` = the direct (non-pooler) string with `?sslmode=require`.
+- Supabase: `DATABASE_URL` = transaction pooler (port 6543, `?pgbouncer=true`); `DIRECT_URL` = direct/session connection (port 5432).
+
+### 2. Baseline the database by hand (before the first deploy)
+Run these from your machine, pointed at the **target** DB. Prisma uses `DIRECT_URL` for migrations.
+```bash
+export DATABASE_URL="<pooled url>" DIRECT_URL="<direct url>"
+```
+```bash
+npm run db:migrate:status
+```
+Expect every migration listed as "not yet applied" on a fresh DB.
+```bash
+npm run db:migrate:deploy
+```
+```bash
+npm run db:migrate:status
+```
+Expect "Database schema is up to date!".
+```bash
+npx prisma db seed
+```
+Expect "✓ All 18 recipes pass validateRawCompliance" and 3 "✓ Template" lines.
+
+Verify the baseline, for example with `psql "$DIRECT_URL" -c 'select migration_name, finished_at from "_prisma_migrations" order by started_at'`. Every row should have a `finished_at`, and none should be rolled back.
+
+### 3. Configure and deploy
+1. Import the repo in Vercel. Set `DATABASE_URL`, `DIRECT_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL` (the deployment URL), `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and optionally `EMAIL_SERVER`/`EMAIL_FROM`. **Never** set `ENABLE_DEV_LOGIN`; it is ignored on Vercel anyway.
+2. Deploy. The build runs `prisma generate` (postinstall) and `next build` only.
+3. In Google Cloud Console, add `https://<your-domain>/api/auth/callback/google` as an authorized redirect URI.
+
+### 4. Later schema changes
+Use the same order every time: create the migration locally (`npx prisma migrate dev --name <change>`) → review the SQL → `npm run db:migrate:deploy` against staging → verify → against production → then deploy the code.
+
+### Re-enabling automated migrations (only after the baseline is verified)
+Once production and staging both show "Database schema is up to date!" and you've done at least one manual migrate-then-deploy cycle, you may opt back in. Set the Vercel build command to `prisma migrate deploy && next build`, ideally for the Production environment only, so previews never migrate a shared DB. Keep `DIRECT_URL` set: migrations must not go through PgBouncer.
 
 ## Architecture at a glance
 
