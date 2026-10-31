@@ -1,0 +1,7 @@
+# All changes need review by the owner. Security-critical paths are listed explicitly.
+*                          @kanders252
+/src/lib/auth.ts           @kanders252
+/src/lib/dev-login.ts      @kanders252
+/src/lib/compliance.ts     @kanders252
+/prisma/                   @kanders252
+/.github/                  @kanders252
