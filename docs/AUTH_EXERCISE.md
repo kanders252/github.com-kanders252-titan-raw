@@ -42,7 +42,7 @@ SendGrid, SES…) and `EMAIL_FROM` on a domain verified with that provider (SPF/
 
 | # | Step | You should see | Failure looks like |
 |---|---|---|---|
-| 2.1 | Private window → `/login` → enter an inbox you control → **Email me a magic link** | Redirect to `/login?check=email` with "Check your inbox" | `/api/auth/error?error=EmailSignin`: SMTP auth or connection failure (check server logs for the nodemailer error) |
+| 2.1 | Private window → `/login` → enter an inbox you control → **Email me a magic link** | Redirect to `/login?check=email` with "Check your inbox" | `/login?error=EmailSignin` (the login page shows "We couldn't sign you in"): SMTP auth or connection failure (check server logs for the nodemailer error) |
 | 2.2 | DB check: `select identifier, expires from "VerificationToken"` | One row for your email, expiring in about 24h | No row: the adapter isn't writing tokens |
 | 2.3 | Check the inbox (and spam) | Within about 1 minute, an email from `EMAIL_FROM` with a "Sign in" link whose host is your `NEXTAUTH_URL` | No email: check the provider's activity log. Link host is `localhost` on staging: `NEXTAUTH_URL` is wrong. Lands in spam: SPF/DKIM not set |
 | 2.4 | Click the link | You're signed in and land on the callback URL (or `/`) | `error=Verification`: token expired or already used, or the link was pre-fetched by a mail scanner (try again with a different inbox) |

@@ -46,6 +46,29 @@ describe("isDevLoginAllowed — security boundary", () => {
       expect(isDevLoginAllowed(on({ NODE_ENV: "development", NEXTAUTH_URL }))).toBe(false);
     });
 
+    it.each([
+      "http://localhost@evil.com",
+      "http://localhost:3000@evil.com",
+      "http://evil.com#@localhost",
+      "http://evil.com/?h=localhost",
+      "http://localhost.:3000",
+      "http://[::1]:3000",
+    ])("denies adversarial/non-exact host %s", (NEXTAUTH_URL) => {
+      expect(isDevLoginAllowed(on({ NODE_ENV: "development", NEXTAUTH_URL }))).toBe(false);
+    });
+
+    it.each(["HTTP://LOCALHOST:3000", " http://localhost:3000", "http://127.1:3000"])(
+      "allows equivalent local spellings %s (WHATWG URL normalises them to a local host)",
+      (NEXTAUTH_URL) => {
+        expect(isDevLoginAllowed(on({ NODE_ENV: "development", NEXTAUTH_URL }))).toBe(true);
+      },
+    );
+
+    it.each(["0", "false", ""])("treats any non-empty VERCEL value as Vercel (VERCEL=%j)", (VERCEL) => {
+      const r = isDevLoginAllowed(on({ VERCEL, NODE_ENV: "development", NEXTAUTH_URL: LOCAL[0] }));
+      expect(r).toBe(VERCEL === "");
+    });
+
     it.each([undefined, "false", "1", "TRUE", "yes"])("denies when ENABLE_DEV_LOGIN=%s", (ENABLE_DEV_LOGIN) => {
       expect(isDevLoginAllowed({ ENABLE_DEV_LOGIN, NODE_ENV: "development", NEXTAUTH_URL: LOCAL[0] })).toBe(false);
     });

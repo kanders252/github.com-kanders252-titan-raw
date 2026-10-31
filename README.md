@@ -122,7 +122,11 @@ Verify the baseline, for example with `psql "$DIRECT_URL" -c 'select migration_n
 Use the same order every time: create the migration locally (`npx prisma migrate dev --name <change>`) → review the SQL → `npm run db:migrate:deploy` against staging → verify → against production → then deploy the code.
 
 ### Re-enabling automated migrations (only after the baseline is verified)
-Once production and staging both show "Database schema is up to date!" and you've done at least one manual migrate-then-deploy cycle, you may opt back in. Set the Vercel build command to `prisma migrate deploy && next build`, ideally for the Production environment only, so previews never migrate a shared DB. Keep `DIRECT_URL` set: migrations must not go through PgBouncer.
+Once production and staging both show "Database schema is up to date!" and you've done at least one manual migrate-then-deploy cycle, you may opt back in. Because `vercel.json`'s `buildCommand` **overrides** the dashboard setting, the change has to happen in the repo. Keep previews from migrating by gating on `VERCEL_ENV`:
+```json
+"buildCommand": "if [ \"$VERCEL_ENV\" = \"production\" ]; then npx prisma migrate deploy; fi && next build"
+```
+Previews must then use their own database branch, or skip schema-dependent changes. Keep `DIRECT_URL` set: migrations must not go through PgBouncer.
 
 ## Architecture at a glance
 

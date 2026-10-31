@@ -2,7 +2,7 @@ name: quality-gate
 
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
 
 concurrency:

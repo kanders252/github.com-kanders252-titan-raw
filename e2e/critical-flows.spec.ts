@@ -69,7 +69,7 @@ test.describe("critical flows", () => {
     // (addMany de-duplicates, so a repeated click is harmless.)
     await expect(async () => {
       await page.getByTestId("add-all-to-shopping-list").click();
-      await expect(page.getByRole("status")).toContainText("Added to your basket", { timeout: 1_000 });
+      await expect(page.getByText("Added to your basket")).toBeVisible({ timeout: 1_000 });
     }).toPass();
 
     const stored = await page.evaluate(() => window.localStorage.getItem("titan-raw-shopping-list"));
