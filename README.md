@@ -45,7 +45,7 @@ The seed is **compliance-gated**: it runs `validateRawCompliance` on every recip
 | `GOOGLE_CLIENT_ID` | optional | Google OAuth (redirect URI: `<NEXTAUTH_URL>/api/auth/callback/google`) |
 | `GOOGLE_CLIENT_SECRET` | optional | Google OAuth |
 | `EMAIL_SERVER` / `EMAIL_FROM` | optional | SMTP for email magic links, e.g. `smtp://user:pass@host:587` |
-| `ENABLE_DEV_LOGIN` | dev/E2E only | `"true"` enables a passwordless dev login. It fails closed: it is off on any Vercel deployment (preview included), off for production builds unless `NEXTAUTH_URL` is localhost, and it never signs in as an account created through Google or email |
+| `ENABLE_DEV_LOGIN` | dev/E2E only | `"true"` enables a passwordless dev login. Allowed **only** when `NODE_ENV=development` and `NEXTAUTH_URL` is `localhost`/`127.0.0.1`, and never when `VERCEL`/`VERCEL_ENV` is set (`src/lib/dev-login.ts`, fully unit-tested). It never signs in as an account created through Google or email |
 | `APP_TIMEZONE` | optional | IANA tz that defines "today" for daily logs (default `UTC`) |
 | `ADMIN_EMAILS` | optional | Comma-separated list allowed to run `auditRecipe`. Unset means dev-only access; production denies everyone |
 
@@ -68,7 +68,7 @@ npx playwright test
 ```
 
 - **Vitest** covers the compliance engine (every rule plus edge cases), every seed recipe, the seed gate, Zod schemas and date helpers.
-- **Playwright** starts `next start` itself (so run `npm run build` first) and needs a seeded DB plus `ENABLE_DEV_LOGIN=true`. It covers:
+- **Playwright** starts `next dev` itself (dev login exists only in development) and needs a seeded DB. The production build is checked separately by `npm run build`. It covers:
   1. login → `/daily` → check Breakfast → HOME ring shows **1/8**
   2. `/plans/new` → 3-day plan with all 8 day-1 slots → plan appears in `/plans`
   3. `/recipes` → search "Jungle" → detail → **Add All to Shopping List** → `localStorage["titan-raw-shopping-list"]` holds the right ingredients

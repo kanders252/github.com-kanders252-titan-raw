@@ -6,23 +6,12 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import EmailProvider from "next-auth/providers/email";
 import GoogleProvider from "next-auth/providers/google";
 import { z } from "zod";
+import { isDevLoginAllowed } from "@/lib/dev-login";
 import { prisma } from "@/lib/prisma";
 
-/**
- * Passwordless "dev login" for local development and Playwright only. Fails closed:
- * requires ENABLE_DEV_LOGIN=true AND never on any Vercel deployment (production or preview)
- * AND, when running a production build, NEXTAUTH_URL must point at localhost (E2E uses `next start`).
- */
-export function isDevLoginEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  if (env.ENABLE_DEV_LOGIN !== "true") return false;
-  if (env.VERCEL || env.VERCEL_ENV) return false;
-  if (env.NODE_ENV !== "production") return true;
-  try {
-    const host = new URL(env.NEXTAUTH_URL ?? "").hostname;
-    return host === "localhost" || host === "127.0.0.1";
-  } catch {
-    return false;
-  }
+/** See src/lib/dev-login.ts — the single, unit-tested gate for the dev-login provider. */
+export function isDevLoginEnabled(): boolean {
+  return isDevLoginAllowed(process.env);
 }
 
 const providers: Provider[] = [];

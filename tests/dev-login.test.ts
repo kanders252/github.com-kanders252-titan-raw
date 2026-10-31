@@ -1,29 +1,53 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { isDevLoginAllowed, type DevLoginEnv } from "@/lib/dev-login";
 
-vi.mock("@/lib/prisma", () => ({ prisma: {} }));
-vi.mock("@next-auth/prisma-adapter", () => ({ PrismaAdapter: () => ({}) }));
+const LOCAL = ["http://localhost:3000", "http://127.0.0.1:3000"];
+const REMOTE = ["https://titan-raw.app", "https://staging.titan-raw.app", "http://localhost.evil.com", "http://0.0.0.0:3000", "http://192.168.1.10:3000"];
+const NODE_ENVS = ["development", "production", "test", undefined];
+const on = (e: DevLoginEnv): DevLoginEnv => ({ ENABLE_DEV_LOGIN: "true", ...e });
 
-const { isDevLoginEnabled } = await import("@/lib/auth");
-const env = (e: Record<string, string>) => e as unknown as NodeJS.ProcessEnv;
+describe("isDevLoginAllowed — security boundary", () => {
+  describe("VERCEL=1 → always false, regardless of NODE_ENV or host", () => {
+    for (const NODE_ENV of NODE_ENVS)
+      for (const NEXTAUTH_URL of [...LOCAL, ...REMOTE])
+        it(`NODE_ENV=${NODE_ENV} host=${NEXTAUTH_URL}`, () => {
+          expect(isDevLoginAllowed(on({ VERCEL: "1", NODE_ENV, NEXTAUTH_URL }))).toBe(false);
+        });
 
-describe("isDevLoginEnabled (fails closed)", () => {
-  it("is off unless explicitly enabled", () => {
-    expect(isDevLoginEnabled(env({ NODE_ENV: "development" }))).toBe(false);
+    it.each(["production", "preview", "development"])("VERCEL_ENV=%s alone also denies", (VERCEL_ENV) => {
+      expect(isDevLoginAllowed(on({ VERCEL_ENV, NODE_ENV: "development", NEXTAUTH_URL: LOCAL[0] }))).toBe(false);
+    });
   });
-  it("is on in development", () => {
-    expect(isDevLoginEnabled(env({ ENABLE_DEV_LOGIN: "true", NODE_ENV: "development" }))).toBe(true);
+
+  describe("NODE_ENV=production AND host not localhost/127.0.0.1 → false", () => {
+    it.each(REMOTE)("host=%s", (NEXTAUTH_URL) => {
+      expect(isDevLoginAllowed(on({ NODE_ENV: "production", NEXTAUTH_URL }))).toBe(false);
+    });
   });
-  it("is on for a production build served on localhost (E2E)", () => {
-    expect(
-      isDevLoginEnabled(env({ ENABLE_DEV_LOGIN: "true", NODE_ENV: "production", NEXTAUTH_URL: "http://localhost:3000" })),
-    ).toBe(true);
-  });
-  it("is off for a production build on a real host", () => {
-    expect(
-      isDevLoginEnabled(env({ ENABLE_DEV_LOGIN: "true", NODE_ENV: "production", NEXTAUTH_URL: "https://titan-raw.app" })),
-    ).toBe(false);
-  });
-  it.each(["production", "preview", "development"])("is off on any Vercel deployment (%s)", (v) => {
-    expect(isDevLoginEnabled(env({ ENABLE_DEV_LOGIN: "true", NODE_ENV: "development", VERCEL_ENV: v, VERCEL: "1" }))).toBe(false);
+
+  describe("true ONLY for NODE_ENV=development on localhost", () => {
+    it.each(LOCAL)("allows development on %s", (NEXTAUTH_URL) => {
+      expect(isDevLoginAllowed(on({ NODE_ENV: "development", NEXTAUTH_URL }))).toBe(true);
+    });
+
+    it.each(LOCAL)("denies production even on %s", (NEXTAUTH_URL) => {
+      expect(isDevLoginAllowed(on({ NODE_ENV: "production", NEXTAUTH_URL }))).toBe(false);
+    });
+
+    it.each(["test", undefined, ""])("denies NODE_ENV=%s on localhost", (NODE_ENV) => {
+      expect(isDevLoginAllowed(on({ NODE_ENV, NEXTAUTH_URL: LOCAL[0] }))).toBe(false);
+    });
+
+    it.each(REMOTE)("denies development on non-local host %s", (NEXTAUTH_URL) => {
+      expect(isDevLoginAllowed(on({ NODE_ENV: "development", NEXTAUTH_URL }))).toBe(false);
+    });
+
+    it.each([undefined, "", "not a url"])("denies development with NEXTAUTH_URL=%s", (NEXTAUTH_URL) => {
+      expect(isDevLoginAllowed(on({ NODE_ENV: "development", NEXTAUTH_URL }))).toBe(false);
+    });
+
+    it.each([undefined, "false", "1", "TRUE", "yes"])("denies when ENABLE_DEV_LOGIN=%s", (ENABLE_DEV_LOGIN) => {
+      expect(isDevLoginAllowed({ ENABLE_DEV_LOGIN, NODE_ENV: "development", NEXTAUTH_URL: LOCAL[0] })).toBe(false);
+    });
   });
 });

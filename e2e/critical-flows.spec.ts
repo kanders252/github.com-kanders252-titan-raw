@@ -29,8 +29,10 @@ test.describe("critical flows", () => {
     await expect(page).toHaveURL(/\/plans\/new/);
 
     const name = `E2E Abundance ${Date.now()}`;
+    await page.waitForLoadState("networkidle"); // let the client form hydrate before typing
     await page.getByLabel("Name").fill(name);
     await page.getByLabel("Duration (days)").fill("3");
+    await expect(page.getByLabel("Name")).toHaveValue(name);
 
     await page.getByRole("combobox", { name: "Category" }).click();
     await page.getByRole("option", { name: "Detox" }).click();
@@ -63,7 +65,12 @@ test.describe("critical flows", () => {
     await cards.first().click();
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Jungle Juice");
 
-    await page.getByTestId("add-all-to-shopping-list").click();
+    // In dev mode the click can land before hydration; retry until the handler has run.
+    // (addMany de-duplicates, so a repeated click is harmless.)
+    await expect(async () => {
+      await page.getByTestId("add-all-to-shopping-list").click();
+      await expect(page.getByRole("status")).toContainText("Added to your basket", { timeout: 1_000 });
+    }).toPass();
 
     const stored = await page.evaluate(() => window.localStorage.getItem("titan-raw-shopping-list"));
     expect(stored).not.toBeNull();
@@ -87,6 +94,7 @@ test.describe("critical flows", () => {
   test("start a template plan → /daily shows the plan's recipes for day 1", async ({ page }) => {
     await login(page, uniqueEmail("start"), "/plans");
     await page.getByTestId("plan-card").filter({ hasText: "3-Day Fresh Reset" }).click();
+    await page.waitForLoadState("networkidle");
     await page.getByTestId("start-plan").click();
     await page.waitForURL(/\/daily$/);
     await expect(page.getByText("Day 1 of 3")).toBeVisible();

@@ -8,7 +8,10 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI ? "github" : "list",
+  reporter: process.env.CI ? [["github"], ["list"]] : "list",
+  // `next dev` compiles each route on first hit, so allow generous timeouts.
+  timeout: 90_000,
+  expect: { timeout: 20_000 },
   use: {
     baseURL,
     trace: "retain-on-failure",
@@ -20,11 +23,13 @@ export default defineConfig({
     { name: "mobile-375", use: { ...devices["Desktop Chrome"], viewport: { width: 375, height: 740 } }, grep: /@mobile/ },
   ],
   webServer: {
-    // Requires `npm run build` first (the quality gate does this).
-    command: `npx next start -p ${PORT}`,
+    // E2E runs against `next dev`: the dev-login provider is only allowed when
+    // NODE_ENV=development on localhost (see src/lib/dev-login.ts). The production
+    // build is verified separately by `npm run build` in the quality gate.
+    command: `npx next dev -p ${PORT}`,
     url: baseURL,
     reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
+    timeout: 180_000,
     env: { ENABLE_DEV_LOGIN: "true", NEXTAUTH_URL: baseURL },
   },
 });

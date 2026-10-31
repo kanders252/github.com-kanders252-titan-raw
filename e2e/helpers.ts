@@ -7,6 +7,7 @@ export function uniqueEmail(tag: string) {
 /** Signs in through the real /login page using the dev-login credentials provider. */
 export async function login(page: Page, email: string, callbackUrl = "/") {
   await page.goto(`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`);
+  await page.waitForLoadState("networkidle"); // hydrate before interacting
   await page.getByLabel("Email").fill(email);
   await page.getByRole("button", { name: /sign in/i }).click();
   await page.waitForURL((url) => !url.pathname.startsWith("/login"));
