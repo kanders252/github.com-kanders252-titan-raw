@@ -1,31 +1,89 @@
 name: quality-gate
-on: [push, pull_request]
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: quality-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   gate:
+    name: tsc · lint · build · vitest · playwright
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     services:
       postgres:
         image: postgres:16-alpine
-        env: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: titan_raw }
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: titan_raw
         ports: ["5432:5432"]
         options: >-
-          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/titan_raw?schema=public
       DIRECT_URL: postgresql://postgres:postgres@localhost:5432/titan_raw?schema=public
-      NEXTAUTH_SECRET: ci-only-secret-0123456789abcdef
+      NEXTAUTH_SECRET: ci-only-secret-not-used-anywhere-else
       NEXTAUTH_URL: http://localhost:3000
-      ENABLE_DEV_LOGIN: "true"
+      APP_TIMEZONE: UTC
+      NEXT_TELEMETRY_DISABLED: "1"
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: npm }
-      - run: npm ci
-      - run: npx prisma migrate deploy
-      - run: npx prisma db seed
-      - run: npx tsc --noEmit
-      - run: npm run lint
-      - run: npm run build
-      - run: npx vitest run
-      - run: npx playwright install --with-deps chromium
-      - run: npx playwright test
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply migrations (CI database only)
+        run: npx prisma migrate deploy
+
+      - name: Seed (aborts if any recipe fails raw compliance)
+        run: npx prisma db seed
+
+      - name: "Gate 1: tsc --noEmit"
+        run: npx tsc --noEmit
+
+      - name: "Gate 2: lint"
+        run: npm run lint
+
+      - name: "Gate 3: build"
+        run: npm run build
+
+      - name: "Gate 4: vitest run"
+        run: npx vitest run
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: "Gate 5: playwright test"
+        # Playwright starts `next dev` itself; dev login is allowed only for
+        # NODE_ENV=development on localhost (src/lib/dev-login.ts).
+        env:
+          ENABLE_DEV_LOGIN: "true"
+          CI: "true"
+        run: npx playwright test
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
